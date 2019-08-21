@@ -5,7 +5,7 @@ import pyaudio
 from six import print_
 from six.moves import queue
 import numpy as np
-from dragonfly import get_engine, Grammar, Mouse
+from dragonfly import get_engine, Mouse
 
 _log = logging.getLogger(os.path.basename(__file__))
 
@@ -277,23 +277,27 @@ def plot_spectrum(freqs, spectrum, spectrum2=None, logx=True, logy=False, ylim=N
 plot_spectrum_lines = None
 
 def setup_show_spectrum():
-    def timer_func():
-        block = audio.read(realtime=True, blocking=False)
-        if block is not None:
-            processor.callback(block)
     global timer
     audio = Audio()
     recognizer = lambda spectrogram: plot_spectrum(processor.freqs, spectrogram[-1])
     processor = Processor(audio, recognizer, length_s=1)
-    timer = get_engine().create_timer(timer_func, 0.02)
+    timer = get_engine().create_timer(make_timer_func(audio, processor), 0.02)
 
 
 ################################################################################################################################################################
 
+def make_timer_func(audio, processor):
+    def timer_func():
+        block = audio.read(realtime=True, blocking=False)
+        # print_(len(block) if block is not None else None)
+        if block is not None:
+            processor.callback(block)
+    return timer_func
+
 def test_recognizer(spectrogram):
     print_(spectrogram)
 
-def make_hmm_recognizer(action=None, freq_min=100, freq_max=200, db_min=100, peak_freq_width=40, peak_db_height=30, ms_before_action=300):
+def make_hmm_recognizer(action=None, freq_min=100, freq_max=200, db_min=100, peak_freq_width=40, peak_db_height=20, ms_before_action=300):
     def recognizer(spectrogram):
         freq_idxs = spectrogram.argmax(axis=1)
         amps = spectrogram[np.ix_(range(len(freq_idxs)))[0], freq_idxs].astype(int)
@@ -305,17 +309,19 @@ def make_hmm_recognizer(action=None, freq_min=100, freq_max=200, db_min=100, pea
         # mean_freq = freqs[-steps_before_action:].mean()
         # state_sustain = np.all(np.abs(freqs[-steps_before_action:] - mean_freq) <= 10) and (db_min <= amps[-1])
         # state_start = state_sustain and np.all(freq_min <= freqs[-steps_before_action:]) and np.all(freqs[-steps_before_action:] <= freq_max) and np.all(db_min <= amps[-steps_before_action:])
-        state_start = all([
+        state_start_conditions = [
             state_sustain,
             np.all(freq_min < freqs[-steps_before_action:]),
             np.all(freqs[-steps_before_action:] < freq_max),
             np.all(np.abs(freqs[-steps_before_action:] - freqs[-steps_before_action:].mean()) <= 10),
             np.all(db_min < amps[-steps_before_action:]),
-            np.all(amps[:-steps_before_action] < db_min),
+            # np.all(amps[:-steps_before_action] < db_min),
             # np.all(spectrogram[-steps_before_action:, (freq_idxs[-steps_before_action:].min()-peak_freq_idx_radius, freq_idxs[-steps_before_action:].max()+peak_freq_idx_radius)] < amps[-steps_before_action:]),
             np.all(spectrogram[-steps_before_action:, freq_idxs[-steps_before_action:].min()-peak_freq_idx_radius] < amps[-steps_before_action:]),
             np.all(spectrogram[-steps_before_action:, freq_idxs[-steps_before_action:].max()-peak_freq_idx_radius] < amps[-steps_before_action:]),
-        ])
+        ]
+        print_(state_start_conditions)
+        state_start = all(state_start_conditions)
         # print_(bool(state), state_start, state_sustain)
         state.set(bool((not state and state_start) or (state and state_sustain)))
         # if state: from IPython import embed; embed()
@@ -325,23 +331,31 @@ def make_hmm_recognizer(action=None, freq_min=100, freq_max=200, db_min=100, pea
     state = State(lockout=0.5, hi_trig=lambda: print_("recognizer_state hi!"), lo_trig=lambda: print_("recognizer_state lo!"))
     return recognizer
 
-def setup():
-    def timer_func():
-        block = audio.read(realtime=True, blocking=False)
-        # print_(len(block) if block is not None else None)
-        if block is not None:
-            processor.callback(block)
+def setup_test():
     global timer
     audio = Audio()
     recognizer = make_hmm_recognizer(action=Mouse("wheeldown"))
     processor = Processor(audio, recognizer, length_s=1)
-    timer = get_engine().create_timer(timer_func, 0.02)
+    timer = get_engine().create_timer(make_timer_func(audio, processor), 0.02)
+
+timers = dict()
+
+def setup(name, recognizer):
+    audio = Audio()
+    processor = Processor(audio, recognizer, length_s=1)
+    timer = get_engine().create_timer(make_timer_func(audio, processor), 0.02)
+    timers[name] = timer
+    return timer
+
+def destroy(name):
+    timer = timers.pop(name)
+    timer.stop()
+    return timer
+
+def any_active():
+    return bool(timers)
 
 ################################################################################################################################################################
 
 # setup_show_spectrum()
-setup()
-
-grammar = Grammar("noise_recognition")
-# grammar.add_rule()
-grammar.load()
+# setup_test()
