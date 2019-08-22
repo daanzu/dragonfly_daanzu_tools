@@ -13,3 +13,5 @@ git clone https://github.com/daanzu/dragonfly_daanzu_tools
 pip install -r dragonfly_daanzu_tools/requirements.txt
 cp dragonfly_daanzu_tools/_noise_recognition_example.py .
 ```
+
+The "hmm recognizer" should detect a steady, constant "hmm" sound.
