@@ -297,11 +297,12 @@ def make_timer_func(audio, processor):
 def test_recognizer(spectrogram):
     print_(spectrogram)
 
-def make_hmm_recognizer(action=None, freq_min=100, freq_max=200, db_min=100, peak_freq_width=40, peak_db_height=20, ms_before_action=300):
+def make_hmm_recognizer(action=None, freq_min=100, freq_max=200, db_min=100, peak_freq_width=40, peak_db_height=20, ms_before_action=300, silence_ms_before_detect=300):
     def recognizer(spectrogram):
         freq_idxs = spectrogram.argmax(axis=1)
         amps = spectrogram[np.ix_(range(len(freq_idxs)))[0], freq_idxs].astype(int)
         freqs = freq_idxs * 10
+        silence_steps_before_detect = int(float(silence_ms_before_detect) / 1000 * Audio.BLOCKS_PER_SECOND)
         steps_before_action = int(float(ms_before_action) / 1000 * Audio.BLOCKS_PER_SECOND)
         state_sustain = (abs(freqs[-1] - freqs[-2]) <= 10) and (db_min <= amps[-1])
         peak_freq_idx_radius = int(peak_freq_width / 20)
@@ -316,11 +317,12 @@ def make_hmm_recognizer(action=None, freq_min=100, freq_max=200, db_min=100, pea
             np.all(np.abs(freqs[-steps_before_action:] - freqs[-steps_before_action:].mean()) <= 10),
             np.all(db_min < amps[-steps_before_action:]),
             # np.all(amps[:-steps_before_action] < db_min),
+            np.all(amps[-silence_steps_before_detect-steps_before_action : -steps_before_action] < db_min),
             # np.all(spectrogram[-steps_before_action:, (freq_idxs[-steps_before_action:].min()-peak_freq_idx_radius, freq_idxs[-steps_before_action:].max()+peak_freq_idx_radius)] < amps[-steps_before_action:]),
             np.all(spectrogram[-steps_before_action:, freq_idxs[-steps_before_action:].min()-peak_freq_idx_radius] < amps[-steps_before_action:]),
             np.all(spectrogram[-steps_before_action:, freq_idxs[-steps_before_action:].max()-peak_freq_idx_radius] < amps[-steps_before_action:]),
         ]
-        print_(state_start_conditions)
+        # print_(state_start_conditions)
         state_start = all(state_start_conditions)
         # print_(bool(state), state_start, state_sustain)
         state.set(bool((not state and state_start) or (state and state_sustain)))
