@@ -327,8 +327,13 @@ def make_hmm_recognizer(action=None, freq_min=100, freq_max=200, db_min=100, pea
         # print_(bool(state), state_start, state_sustain)
         state.set(bool((not state and state_start) or (state and state_sustain)))
         # if state: from IPython import embed; embed()
-        if state and action:
-            action.execute()
+        if state:
+            engine = get_engine()
+            ignore_current_phrase = getattr(engine, 'ignore_current_phrase', None)
+            if ignore_current_phrase:
+                ignore_current_phrase()
+            if action:
+                action.execute()
     state = State(lockout=0.5)
     state = State(lockout=0.5, hi_trig=lambda: print_("recognizer_state hi!"), lo_trig=lambda: print_("recognizer_state lo!"))
     return recognizer
